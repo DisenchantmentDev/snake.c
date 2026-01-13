@@ -1,9 +1,6 @@
-*.o
-*.txt
-
 /raylib/*
+!/raylib/src/
+!/raylib/src/raylib.h
+
 /snake
 /nob
-
-!raylib/src/
-!raylib/src/raylib.h
