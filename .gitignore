@@ -1,4 +1,4 @@
-/raylib/*
+/raylib/**
 !/raylib/src/
 !/raylib/src/raylib.h
 
