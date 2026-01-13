@@ -2,4 +2,5 @@
 /snake
 /nob
 
+!raylib/src/
 !raylib/src/raylib.h
