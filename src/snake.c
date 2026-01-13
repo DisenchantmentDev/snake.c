@@ -8,6 +8,10 @@
 #define CELL_SIZE 20.0
 #define MAX_BODY 625
 
+#define PRE_GAME 0
+#define GAME_RUNNING 1
+#define GAME_OVER 2
+
 #define da_append(xs, x)                                                      \
     do                                                                        \
         {                                                                     \
@@ -28,7 +32,6 @@ typedef struct
 {
     Vector2 coords[MAX_BODY]; // A list of coords RELATIVE TO HEAD POSITION
     size_t count;
-    size_t capacity;
     size_t front;
     size_t rear;
 } SnakeBody;
@@ -54,6 +57,7 @@ typedef struct
     int cached_key;
     Snake snake;
     Apple apple;
+    int game_status;
 } Game_Ctx;
 
 void
@@ -211,6 +215,27 @@ draw_snake (Game_Ctx *game)
         }
 }
 
+bool
+has_collided (Game_Ctx *game)
+{
+    int i = game->snake.body.front;
+    while (1)
+        {
+            if (i == game->snake.body.rear)
+                break;
+
+            if (game->snake.body.count < 5)
+                return false;
+
+            if (game->snake.head_pos.x == game->snake.body.coords[i].x
+                && game->snake.head_pos.y == game->snake.body.coords[i].y)
+                return true;
+
+            i = (i + 1) % MAX_BODY;
+        }
+    return false;
+}
+
 void
 initialize_game (Game_Ctx *game)
 {
@@ -228,7 +253,7 @@ main (void)
     snake_body.front = -1;
     snake_body.rear = -1;
     Snake snake = { { 200, 200 }, { CELL_SIZE, CELL_SIZE }, 1, snake_body };
-    Game_Ctx game = { 0, 0, snake, apple };
+    Game_Ctx game = { 0, 0, snake, apple, PRE_GAME };
     insert_front (&game, (Vector2){ 200, 200 });
 
     // initialize_game (&game);
@@ -248,16 +273,6 @@ main (void)
              * Make sure we draw apple first, and then snake, so if snake moves
              * over apple that take priority*/
 
-            if (!game.apple.is_present)
-                gen_apple (&game);
-
-            game.frame_count = (game.frame_count + 1) % 60;
-            if (game.frame_count == 0 || game.frame_count == 30)
-                {
-                    // update_body (&game);
-                    move_snake (&game);
-                }
-
             if (IsKeyPressed (KEY_UP))
                 game.cached_key = KEY_UP;
             if (IsKeyPressed (KEY_DOWN))
@@ -267,15 +282,44 @@ main (void)
             if (IsKeyPressed (KEY_RIGHT))
                 game.cached_key = KEY_RIGHT;
 
+            if (game.game_status == PRE_GAME)
+                {
+                    if (game.cached_key != 0)
+                        {
+                            game.game_status = GAME_RUNNING;
+                        }
+                }
+
+            if (game.game_status == GAME_RUNNING)
+                {
+                    // main gameplay loop
+                    if (!game.apple.is_present)
+                        gen_apple (&game);
+
+                    game.frame_count = (game.frame_count + 1) % 60;
+                    if (game.frame_count == 0 || game.frame_count == 30)
+                        {
+                            // update_body (&game);
+                            move_snake (&game);
+                            if (has_collided (&game))
+                                game.game_status = GAME_OVER;
+                        }
+                }
+
             char buff[100];
             sprintf (buff, "Current position: %.2f, %2.f",
                      game.snake.head_pos.x, game.snake.head_pos.y);
 
             BeginDrawing (); /* DRAWING BEGIN */
 
+            if (game.game_status == GAME_OVER)
+                {
+                    DrawText ("Game Over!", 200, 180, 20, WHITE);
+                }
+
             ClearBackground (BLACK); // Might not even need honestly
 
-            DrawText (buff, 10, 10, 10, WHITE); // Debugging text
+            // DrawText (buff, 10, 10, 10, WHITE); // Debugging text
 
             DrawRectangleV (game.apple.pos, game.snake.body_segment_size, RED);
 
@@ -287,11 +331,15 @@ main (void)
 
             EndDrawing (); /* DRAWING END */
 
-            if (has_eaten (&game))
-                game.apple.is_present = false;
+            if (game.game_status == GAME_RUNNING)
+                {
 
-            if (game.frame_count == 0 || game.frame_count == 30)
-                update_body (&game);
+                    if (has_eaten (&game))
+                        game.apple.is_present = false;
+
+                    if (game.frame_count == 0 || game.frame_count == 30)
+                        update_body (&game);
+                }
         }
 
     CloseWindow ();
