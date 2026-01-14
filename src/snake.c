@@ -7,26 +7,11 @@
 #define PLAY_SIZE 500
 #define CELL_SIZE 20.0
 #define MAX_BODY 625
+#define FPS 60
 
 #define PRE_GAME 0
 #define GAME_RUNNING 1
 #define GAME_OVER 2
-
-#define da_append(xs, x)                                                      \
-    do                                                                        \
-        {                                                                     \
-            if ((xs)->count >= (xs)->capacity)                                \
-                {                                                             \
-                    if ((xs)->capacity == 0)                                  \
-                        (xs)->capacity = 256;                                 \
-                    else                                                      \
-                        (xs)->capacity *= 2;                                  \
-                    (xs)->items = realloc (                                   \
-                        (xs)->items, (xs)->capacity * sizeof (*(xs)->items)); \
-                }                                                             \
-            (xs)->items[(xs)->count++] = (x);                                 \
-        }                                                                     \
-    while (0)
 
 typedef struct
 {
@@ -55,9 +40,11 @@ typedef struct
 {
     int frame_count;
     int cached_key;
+    int direction;
     Snake snake;
     Apple apple;
     int game_status;
+    int score;
 } Game_Ctx;
 
 void
@@ -82,6 +69,7 @@ has_eaten (Game_Ctx *game)
     if (game->snake.head_pos.x == game->apple.pos.x
         && game->snake.head_pos.y == game->apple.pos.y)
         {
+            game->score++;
             return true;
         }
 
@@ -99,6 +87,8 @@ move_snake (Game_Ctx *game)
         game->snake.head_pos.x -= CELL_SIZE;
     if (game->cached_key == KEY_RIGHT)
         game->snake.head_pos.x += CELL_SIZE;
+
+    game->direction = game->cached_key;
 
     /* check for illegal coordinates and wrap accordingly */
     if (game->snake.head_pos.x >= PLAY_SIZE)
@@ -237,7 +227,84 @@ has_collided (Game_Ctx *game)
 }
 
 void
-initialize_game (Game_Ctx *game)
+update_keypress (Game_Ctx *game)
+{
+    int prev_input = game->cached_key;
+    if (IsKeyPressed (KEY_UP) && game->direction != KEY_DOWN)
+        game->cached_key = KEY_UP;
+    if (IsKeyPressed (KEY_DOWN) && game->direction != KEY_UP)
+        game->cached_key = KEY_DOWN;
+    if (IsKeyPressed (KEY_LEFT) && game->direction != KEY_RIGHT)
+        game->cached_key = KEY_LEFT;
+    if (IsKeyPressed (KEY_RIGHT) && game->direction != KEY_LEFT)
+        game->cached_key = KEY_RIGHT;
+}
+
+Game_Ctx
+initialize_game ()
+{
+    Apple apple = { { -100, -100 }, false };
+    SnakeBody snake_body = { 0 };
+    snake_body.front = -1;
+    snake_body.rear = -1;
+    Snake snake = { { 200, 200 }, { CELL_SIZE, CELL_SIZE }, 1, snake_body };
+    Game_Ctx game = { 0, 0, 0, snake, apple, PRE_GAME, 0 };
+    insert_front (&game, (Vector2){ 200, 200 });
+    return game;
+}
+
+void
+pregame (Game_Ctx *game)
+{
+    BeginDrawing ();
+    ClearBackground (BLACK);
+    DrawText ("Press an arrow key to begin", 100, 180, 20, WHITE);
+    EndDrawing ();
+
+    if (game->cached_key != 0)
+        game->game_status = GAME_RUNNING;
+}
+
+void
+game_tick (Game_Ctx *game)
+{
+    if (!game->apple.is_present)
+        gen_apple (game);
+
+    game->frame_count = (game->frame_count + 1) % FPS;
+    if (game->frame_count == 0 || game->frame_count == 30)
+        {
+            move_snake (game);
+
+            if (has_collided (game))
+                {
+                    game->game_status = GAME_OVER;
+                    return;
+                }
+
+            if (has_eaten (game))
+                game->apple.is_present = false;
+
+            update_body (game);
+        }
+
+    char buff[100];
+    sprintf (buff, "Current Score: %d", game->score);
+
+    BeginDrawing ();
+
+    ClearBackground (BLACK);
+
+    DrawText (buff, 10, 10, 10, WHITE);
+    DrawRectangleV (game->apple.pos, game->snake.body_segment_size,
+                    RED); // apple
+    draw_snake (game);
+
+    EndDrawing ();
+}
+
+void
+post_game (Game_Ctx *game)
 {
 }
 
@@ -245,21 +312,11 @@ int
 main (void)
 {
     srand (time (NULL));
-    const int screenWidth = 500;
-    const int screenHeight = 500;
 
-    Apple apple = { { 0, 0 }, false };
-    SnakeBody snake_body = { 0 };
-    snake_body.front = -1;
-    snake_body.rear = -1;
-    Snake snake = { { 200, 200 }, { CELL_SIZE, CELL_SIZE }, 1, snake_body };
-    Game_Ctx game = { 0, 0, snake, apple, PRE_GAME };
-    insert_front (&game, (Vector2){ 200, 200 });
-
-    // initialize_game (&game);
+    Game_Ctx game = initialize_game ();
 
     InitWindow (PLAY_SIZE, PLAY_SIZE, "Snake!");
-    SetTargetFPS (60);
+    SetTargetFPS (FPS);
 
     while (!WindowShouldClose ())
         {
@@ -273,72 +330,18 @@ main (void)
              * Make sure we draw apple first, and then snake, so if snake moves
              * over apple that take priority*/
 
-            if (IsKeyPressed (KEY_UP))
-                game.cached_key = KEY_UP;
-            if (IsKeyPressed (KEY_DOWN))
-                game.cached_key = KEY_DOWN;
-            if (IsKeyPressed (KEY_LEFT))
-                game.cached_key = KEY_LEFT;
-            if (IsKeyPressed (KEY_RIGHT))
-                game.cached_key = KEY_RIGHT;
+            update_keypress (&game);
 
             if (game.game_status == PRE_GAME)
+                pregame (&game);
+            else if (game.game_status == GAME_RUNNING)
+                game_tick (&game);
+            else if (game.game_status == GAME_OVER)
                 {
-                    if (game.cached_key != 0)
-                        {
-                            game.game_status = GAME_RUNNING;
-                        }
-                }
-
-            if (game.game_status == GAME_RUNNING)
-                {
-                    // main gameplay loop
-                    if (!game.apple.is_present)
-                        gen_apple (&game);
-
-                    game.frame_count = (game.frame_count + 1) % 60;
-                    if (game.frame_count == 0 || game.frame_count == 30)
-                        {
-                            // update_body (&game);
-                            move_snake (&game);
-                            if (has_collided (&game))
-                                game.game_status = GAME_OVER;
-                        }
-                }
-
-            char buff[100];
-            sprintf (buff, "Current position: %.2f, %2.f",
-                     game.snake.head_pos.x, game.snake.head_pos.y);
-
-            BeginDrawing (); /* DRAWING BEGIN */
-
-            if (game.game_status == GAME_OVER)
-                {
+                    BeginDrawing ();
+                    ClearBackground (BLACK);
                     DrawText ("Game Over!", 200, 180, 20, WHITE);
-                }
-
-            ClearBackground (BLACK); // Might not even need honestly
-
-            // DrawText (buff, 10, 10, 10, WHITE); // Debugging text
-
-            DrawRectangleV (game.apple.pos, game.snake.body_segment_size, RED);
-
-            draw_snake (&game);
-
-            // DrawRectangleV (game.snake.head_pos,
-            // game.snake.body_segment_size,
-            //                 GREEN);
-
-            EndDrawing (); /* DRAWING END */
-
-            if (game.game_status == GAME_RUNNING)
-                {
-
-                    if (has_eaten (&game))
-                        game.apple.is_present = false;
-
-                    if (game.frame_count == 0 || game.frame_count == 30)
-                        update_body (&game);
+                    EndDrawing ();
                 }
         }
 
