@@ -15,7 +15,7 @@
 
 typedef struct
 {
-    Vector2 coords[MAX_BODY]; // A list of coords RELATIVE TO HEAD POSITION
+    Vector2 coords[MAX_BODY];
     size_t count;
     size_t front;
     size_t rear;
@@ -27,7 +27,6 @@ typedef struct
     Vector2 body_segment_size;
     int num_body_segments; // number of body segments that isn't the head;
     SnakeBody body;
-    /* dynamic array that tracks body segments positions; deque?*/
 } Snake;
 
 typedef struct
@@ -57,9 +56,27 @@ gen_apple (Game_Ctx *game)
             /* snap to the nearest coordinate, rounded down always */
             game->apple.pos.x = (int)(new_x / 20) * CELL_SIZE;
             game->apple.pos.y = (int)(new_y / 20) * CELL_SIZE;
+            /* check if apple spawned on snake */
+            int i = game->snake.body.front;
+            bool set_apple = false;
+
+            while (1)
+                {
+                    if (i == game->snake.body.rear)
+                        {
+                            set_apple = true;
+                            break;
+                        }
+                    if (game->apple.pos.x == game->snake.body.coords[i].x
+                        && game->apple.pos.y == game->snake.body.coords[i].y)
+                        {
+                            break;
+                        }
+                    i = (i + 1) % MAX_BODY;
+                }
             if (game->apple.pos.x < 500 && game->apple.pos.y < 500
                 && game->apple.pos.x >= 0 && game->apple.pos.y >= 0)
-                game->apple.is_present = true;
+                game->apple.is_present = set_apple;
         }
 }
 
@@ -145,7 +162,6 @@ insert_front (Game_Ctx *game, Vector2 key)
 
     game->snake.body.coords[game->snake.body.front] = key;
     game->snake.body.count++;
-    // printf ("Inserted item to front\n");
 }
 
 void
@@ -168,7 +184,6 @@ delete_rear (Game_Ctx *game)
             game->snake.body.rear = game->snake.body.rear - 1;
         }
     game->snake.body.count--;
-    // printf ("deleted from back\n");
 }
 
 void
@@ -198,6 +213,7 @@ draw_snake (Game_Ctx *game)
 
             DrawRectangleV (game->snake.body.coords[i],
                             game->snake.body_segment_size, GREEN);
+
             if (i == game->snake.body.rear)
                 break;
 
@@ -306,6 +322,18 @@ game_tick (Game_Ctx *game)
 void
 post_game (Game_Ctx *game)
 {
+    BeginDrawing ();
+    ClearBackground (BLACK);
+    DrawText ("Game Over!", 190, 180, 20, WHITE);
+    DrawText ("Press ENTER to retry", 187, 200, 10, WHITE);
+    // draw score readout
+    EndDrawing ();
+
+    if (IsKeyPressed (KEY_ENTER))
+        {
+            *game = initialize_game ();
+            game->game_status = GAME_RUNNING;
+        }
 }
 
 int
@@ -337,12 +365,7 @@ main (void)
             else if (game.game_status == GAME_RUNNING)
                 game_tick (&game);
             else if (game.game_status == GAME_OVER)
-                {
-                    BeginDrawing ();
-                    ClearBackground (BLACK);
-                    DrawText ("Game Over!", 200, 180, 20, WHITE);
-                    EndDrawing ();
-                }
+                post_game (&game);
         }
 
     CloseWindow ();
